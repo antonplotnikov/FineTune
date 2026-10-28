@@ -905,9 +905,9 @@ struct MenuBarPopupView: View {
                     audioEngine.setEQSettings(settings, for: app)
                 },
                 onUserPresetSelected: { userPreset in
-                    // Apply only bandGains — preserve app's current isEnabled state
+                    // Apply the preset curve — preserve app's current isEnabled state
                     var current = audioEngine.getEQSettings(for: app)
-                    current.bandGains = userPreset.settings.bandGains
+                    current = current.applyingCurve(from: userPreset.settings)
                     audioEngine.setEQSettings(current, for: app)
                 },
                 onSavePreset: { name, settings in
@@ -925,6 +925,10 @@ struct MenuBarPopupView: View {
                 },
                 isFocused: hasKeyboardEngaged && selectedRow == .app(persistenceID: displayableApp.id)
             )
+            .environment(\.eqSpectrumSource, EQSpectrumSource(
+                setActive: { audioEngine.setSpectrumCapture($0, for: app) },
+                frame: { audioEngine.spectrumFrame(for: app) }
+            ))
             .id(PopupKeyboardNavModel.RowID.app(persistenceID: displayableApp.id))
         }
     }
@@ -973,9 +977,9 @@ struct MenuBarPopupView: View {
                 audioEngine.setEQSettingsForInactive(settings, identifier: identifier)
             },
             onUserPresetSelected: { userPreset in
-                // Apply only bandGains — preserve app's current isEnabled state
+                // Apply the preset curve — preserve app's current isEnabled state
                 var current = audioEngine.getEQSettingsForInactive(identifier: identifier)
-                current.bandGains = userPreset.settings.bandGains
+                current = current.applyingCurve(from: userPreset.settings)
                 audioEngine.setEQSettingsForInactive(current, identifier: identifier)
             },
             onSavePreset: { name, settings in

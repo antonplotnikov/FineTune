@@ -564,6 +564,16 @@ final class AudioEngine {
         taps[app.id]?.audioLevel ?? 0.0
     }
 
+    // MARK: - EQ Analyzer
+
+    func setSpectrumCapture(_ enabled: Bool, for app: AudioApp) {
+        taps[app.id]?.setSpectrumCapture(enabled)
+    }
+
+    func spectrumFrame(for app: AudioApp) -> [Float]? {
+        taps[app.id]?.spectrumFrame()
+    }
+
     func start() {
         // Monitors have internal guards against double-starting
         if permission.status == .authorized {

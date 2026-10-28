@@ -4,7 +4,7 @@ import SwiftUI
 struct EQSliderView: View {
     let frequency: String
     @Binding var gain: Float
-    let range: ClosedRange<Float> = -12...12
+    let range: ClosedRange<Float> = EQSettings.minGainDB...EQSettings.maxGainDB
 
     // Local state for smooth visual updates
     @State private var localGain: Float = 0
@@ -18,9 +18,15 @@ struct EQSliderView: View {
     private let tickGap: CGFloat = 3
     private let verticalPadding: CGFloat = 8
 
+    /// Snaps to the fine-adjust grid so stored values are clean (e.g. 3.4, not 3.4172).
+    private func snapped(_ gain: Float) -> Float {
+        let step = EQSettings.gainStepDB
+        return (gain / step).rounded() * step
+    }
+
     private func formatGain(_ gain: Float) -> String {
-        let rounded = Int(gain.rounded())
-        return rounded >= 0 ? "+\(rounded)dB" : "\(rounded)dB"
+        let value = snapped(gain)
+        return value >= 0 ? String(format: "+%.1fdB", value) : String(format: "%.1fdB", value)
     }
 
     var body: some View {
@@ -41,7 +47,7 @@ struct EQSliderView: View {
                                 let normalizedY = (value.location.y - verticalPadding) / travelHeight
                                 let normalized = 1 - normalizedY
                                 let clamped = min(max(normalized, 0), 1)
-                                let newGain = Float(clamped) * (range.upperBound - range.lowerBound) + range.lowerBound
+                                let newGain = snapped(Float(clamped) * (range.upperBound - range.lowerBound) + range.lowerBound)
                                 localGain = newGain
                                 gain = newGain
                             }
@@ -49,6 +55,11 @@ struct EQSliderView: View {
                                 isDragging = false
                             }
                     )
+                    .onTapGesture(count: 2) {
+                        // Double-click resets the band to 0 dB
+                        localGain = 0
+                        gain = 0
+                    }
                     .scrollWheelStep($gain, in: range)
                     .overlay {
                         // All visuals - no hit testing

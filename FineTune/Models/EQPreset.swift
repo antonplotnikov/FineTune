@@ -26,6 +26,18 @@ enum EQPreset: String, CaseIterable, Identifiable {
     case acoustic
     // Media
     case movie
+    // Games
+    case fpsFootsteps
+    case competitive
+    case immersive
+    case mobaRpg
+    case voiceChat
+    // Games (parametric)
+    case footstepsPro
+    case competitivePro
+    case cinematicPro
+    case voiceChatPro
+    case gunfireTamer
 
     var id: String { rawValue }
 
@@ -37,6 +49,7 @@ enum EQPreset: String, CaseIterable, Identifiable {
         case listening = "Listening"
         case music = "Music"
         case media = "Media"
+        case games = "Games"
 
         var id: String { rawValue }
     }
@@ -53,6 +66,9 @@ enum EQPreset: String, CaseIterable, Identifiable {
             return .music
         case .movie:
             return .media
+        case .fpsFootsteps, .competitive, .immersive, .mobaRpg, .voiceChat,
+             .footstepsPro, .competitivePro, .cinematicPro, .voiceChatPro, .gunfireTamer:
+            return .games
         }
     }
 
@@ -82,6 +98,16 @@ enum EQPreset: String, CaseIterable, Identifiable {
         case .deep: return "Deep"
         case .acoustic: return "Acoustic"
         case .movie: return "Movie"
+        case .fpsFootsteps: return "FPS Footsteps"
+        case .competitive: return "Competitive"
+        case .immersive: return "Immersive"
+        case .mobaRpg: return "MOBA / RPG"
+        case .voiceChat: return "Voice Chat"
+        case .footstepsPro: return "Footsteps Pro"
+        case .competitivePro: return "Competitive Pro"
+        case .cinematicPro: return "Cinematic Pro"
+        case .voiceChatPro: return "Voice Chat Pro"
+        case .gunfireTamer: return "Gunfire Tamer"
         }
     }
 
@@ -157,6 +183,55 @@ enum EQPreset: String, CaseIterable, Identifiable {
         case .movie:
             // Cinematic: bass rumble, dialogue clarity, effects detail
             return EQSettings(bandGains: [4, 4, 3, -1, -1, 1, 3, 3, 2, 1])
+
+        // MARK: - Games
+        case .fpsFootsteps:
+            // Cut explosion/rumble energy, lift the 2-8 kHz footstep and reload band
+            return EQSettings(bandGains: [-8, -6, -3, -1, 0, 2, 5, 6, 4, 1])
+        case .competitive:
+            // Maximum positional clarity: heavy low cut, forward upper mids and air
+            return EQSettings(bandGains: [-12, -9, -5, -2, 0, 1.5, 4.5, 6, 4, 1])
+        case .immersive:
+            // Wide, cinematic: weighty low end with open highs for ambience
+            return EQSettings(bandGains: [6, 5, 3, 0, -1, 0, 2, 3, 4, 4])
+        case .mobaRpg:
+            // Keep spell/ability cues and music balanced without harshness
+            return EQSettings(bandGains: [3, 3, 2, 0, 0, 1, 3, 3, 2, 1])
+        case .voiceChat:
+            // Teammate intelligibility over game audio: speech presence, reduced rumble
+            return EQSettings(bandGains: [-8, -6, -3, 0, 2, 4, 5, 3, 0, -2])
+
+        // MARK: - Games (parametric)
+        case .footstepsPro:
+            // Steep rumble cut, scooped low-mids, two narrow lifts on the footstep/gear-rustle band
+            return EQSettings(mode: .parametric, parametricBands: ParametricBand.preset([
+                (.highPass, 70, 0, 0.7), (.lowShelf, 200, -5, 0.7), (.peaking, 2500, 4, 1.2),
+                (.peaking, 4500, 5, 1.5), (.highShelf, 9000, 2.5, 0.7),
+            ]), preampDB: -6.5)
+        case .competitivePro:
+            // Surgical positional clarity: tight low cut, narrow presence peaks, mild air
+            return EQSettings(mode: .parametric, parametricBands: ParametricBand.preset([
+                (.highPass, 90, 0, 0.8), (.peaking, 250, -4, 1.0), (.peaking, 1200, 2, 1.0),
+                (.peaking, 3000, 5, 1.6), (.peaking, 6000, 4, 2.0), (.highShelf, 10000, 1.5, 0.7),
+            ]), preampDB: -6.5)
+        case .cinematicPro:
+            // Weighty sub-bass shelf, cleared low-mids, open top end for story-driven games
+            return EQSettings(mode: .parametric, parametricBands: ParametricBand.preset([
+                (.lowShelf, 80, 5, 0.7), (.peaking, 300, -2, 1.0), (.peaking, 3000, 1.5, 0.9),
+                (.highShelf, 9000, 4, 0.7),
+            ]), preampDB: -5.5)
+        case .voiceChatPro:
+            // Teammate speech first: rumble and hiss out, presence in
+            return EQSettings(mode: .parametric, parametricBands: ParametricBand.preset([
+                (.highPass, 100, 0, 0.7), (.peaking, 200, -3, 1.0), (.peaking, 1500, 3, 1.0),
+                (.peaking, 3500, 4, 1.4), (.lowPass, 12000, 0, 0.7),
+            ]), preampDB: -4.7)
+        case .gunfireTamer:
+            // Tames harsh gunfire/explosion peaks while keeping the low end full
+            return EQSettings(mode: .parametric, parametricBands: ParametricBand.preset([
+                (.lowShelf, 120, 2, 0.7), (.peaking, 2000, -3, 1.8), (.peaking, 4000, -4, 2.0),
+                (.highShelf, 7000, -3, 0.7),
+            ]), preampDB: -2)
         }
     }
 }

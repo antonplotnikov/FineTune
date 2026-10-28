@@ -122,6 +122,9 @@ final class ProcessTapController: ProcessTapControlling {
     private nonisolated(unsafe) var rampCoefficient: Float = 0.0007
     private nonisolated(unsafe) var secondaryRampCoefficient: Float = 0.0007
     private nonisolated(unsafe) var eqProcessor: EQProcessor?
+    /// Post-processing sample tap feeding the EQ analyzer; the audio thread only writes when `isCapturing`.
+    private nonisolated let spectrumTap = SpectrumTap()
+    private var spectrumAnalyzer: SpectrumAnalyzer?
     private nonisolated(unsafe) var autoEQProcessor: AutoEQProcessor?
     private nonisolated(unsafe) var loudnessCompensator: LoudnessCompensator?
     private nonisolated(unsafe) var loudnessEqualizerProcessor: LoudnessEqualizer?
@@ -240,6 +243,19 @@ final class ProcessTapController: ProcessTapControlling {
     }
 
     // MARK: - Public Methods
+
+    func setSpectrumCapture(_ enabled: Bool) {
+        if enabled {
+            if spectrumAnalyzer == nil { spectrumAnalyzer = SpectrumAnalyzer(tap: spectrumTap) }
+            spectrumAnalyzer?.reset()
+        }
+        spectrumTap.isCapturing = enabled
+    }
+
+    func spectrumFrame() -> [Float]? {
+        guard spectrumTap.isCapturing else { return nil }
+        return spectrumAnalyzer?.snapshot()
+    }
 
     func updateEQSettings(_ settings: EQSettings) {
         eqProcessor?.updateSettings(settings)
@@ -638,6 +654,7 @@ final class ProcessTapController: ProcessTapControlling {
         rampCoefficient = 1 - exp(-1 / (Float(sampleRate) * rampTimeSeconds))
         logger.debug("Ramp coefficient: \(self.rampCoefficient)")
 
+        spectrumTap.sampleRate = sampleRate
         eqProcessor = EQProcessor(sampleRate: sampleRate)
         autoEQProcessor = AutoEQProcessor(sampleRate: sampleRate)
         loudnessEqualizerProcessor = LoudnessEqualizer(settings: initial.loudnessEqualizerSettings, sampleRate: Float(sampleRate))
@@ -1245,6 +1262,7 @@ final class ProcessTapController: ProcessTapControlling {
         if let deviceSampleRate = try? primaryResources.aggregateDeviceID.readNominalSampleRate() {
             rampCoefficient = 1 - exp(-1 / (Float(deviceSampleRate) * 0.030))
             eqProcessor?.updateSampleRate(deviceSampleRate)
+            spectrumTap.sampleRate = deviceSampleRate
             autoEQProcessor?.updateSampleRate(deviceSampleRate)
             loudnessCompensator?.updateSampleRate(deviceSampleRate)
 
@@ -1328,7 +1346,8 @@ final class ProcessTapController: ProcessTapControlling {
         eqProc: EQProcessor?,
         autoEQProc: AutoEQProcessor?,
         loudnessEqualizerProc: LoudnessEqualizer?,
-        loudnessCompensatorProc: LoudnessCompensator?
+        loudnessCompensatorProc: LoudnessCompensator?,
+        spectrumTap: SpectrumTap? = nil
     ) {
         let inputBufferCount = inputBuffers.count
         let outputBufferCount = outputBuffers.count
@@ -1468,6 +1487,11 @@ final class ProcessTapController: ProcessTapControlling {
 
             let writtenSampleCount = frameCount * outputChannels
             SoftLimiter.processBuffer(outputSamples, sampleCount: writtenSampleCount)
+
+            // Feed the EQ analyzer with what is actually heard (first buffer only).
+            if outputIndex == 0, let spectrumTap {
+                spectrumTap.capture(samples: outputSamples, frameCount: frameCount, channels: outputChannels)
+            }
         }
     }
 
@@ -1630,7 +1654,8 @@ final class ProcessTapController: ProcessTapControlling {
             eqProc: eqProc,
             autoEQProc: autoEQProc,
             loudnessEqualizerProc: loudnessEqualizerProc,
-            loudnessCompensatorProc: loudnessCompensatorProc
+            loudnessCompensatorProc: loudnessCompensatorProc,
+            spectrumTap: isPrimary ? spectrumTap : nil
         )
 
         if isPrimary {

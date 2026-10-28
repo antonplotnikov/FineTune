@@ -11,9 +11,9 @@ import Foundation
 @Suite("EQPreset — Catalog")
 struct EQPresetCatalogTests {
 
-    @Test("allCases count is 20")
+    @Test("allCases count is 30")
     func allCasesCount() {
-        #expect(EQPreset.allCases.count == 20)
+        #expect(EQPreset.allCases.count == 30)
     }
 
     @Test("Every preset has a non-empty name")
@@ -72,7 +72,7 @@ struct EQPresetBandGainTests {
         }
     }
 
-    @Test("All preset band gains are within ±12 dB range")
+    @Test("All preset band gains are within ±18 dB range")
     func allGainsWithinRange() {
         for preset in EQPreset.allCases {
             for (index, gain) in preset.settings.bandGains.enumerated() {
@@ -139,15 +139,15 @@ struct EQSettingsNormalizationTests {
         #expect(eq.bandGains.allSatisfy { $0 == 0 })
     }
 
-    @Test("clampedGains clamps values outside ±12 dB")
+    @Test("clampedGains clamps values outside ±18 dB")
     func clampedGains() {
-        let eq = EQSettings(bandGains: [-20, -12, 0, 12, 20, 0, 0, 0, 0, 0])
+        let eq = EQSettings(bandGains: [-25, -18, 0, 18, 25, 0, 0, 0, 0, 0])
         let clamped = eq.clampedGains
-        #expect(clamped[0] == EQSettings.minGainDB) // -20 → -12
-        #expect(clamped[1] == EQSettings.minGainDB) // -12 stays
+        #expect(clamped[0] == EQSettings.minGainDB) // -25 → -18
+        #expect(clamped[1] == EQSettings.minGainDB) // -18 stays
         #expect(clamped[2] == 0)                     // 0 stays
-        #expect(clamped[3] == EQSettings.maxGainDB)  // 12 stays
-        #expect(clamped[4] == EQSettings.maxGainDB)  // 20 → 12
+        #expect(clamped[3] == EQSettings.maxGainDB)  // 18 stays
+        #expect(clamped[4] == EQSettings.maxGainDB)  // 25 → 18
     }
 
     @Test("clampedGains handles NaN by replacing with 0")
@@ -250,5 +250,47 @@ struct EQSettingsCodableTests {
         #expect(decoded.bandGains[0] == 5.0)
         #expect(decoded.bandGains[1] == 3.0)
         #expect(decoded.bandGains[2] == 0)
+    }
+}
+
+@Suite("EQPreset — Games category")
+struct EQPresetGamesTests {
+
+    @Test("Games category contains the ten game presets")
+    func gamesCategory() {
+        let games = EQPreset.presets(for: .games)
+        #expect(games.count == 10)
+        #expect(games.contains(.fpsFootsteps))
+    }
+
+    @Test("FPS presets cut sub-bass and boost the footstep band")
+    func fpsShape() {
+        for preset in [EQPreset.fpsFootsteps, .competitive] {
+            let g = preset.settings.bandGains
+            #expect(g[0] < 0, "\(preset.rawValue) should cut 31 Hz")
+            #expect(g[6] > 0 && g[7] > 0, "\(preset.rawValue) should boost 2-4 kHz")
+        }
+    }
+
+    @Test("Parametric game presets use parametric mode with a headroom preamp")
+    func parametricGamePresets() {
+        for preset in [EQPreset.footstepsPro, .competitivePro, .cinematicPro, .voiceChatPro, .gunfireTamer] {
+            let eq = preset.settings
+            #expect(eq.mode == .parametric, "\(preset.rawValue)")
+            #expect(!eq.parametricBands.isEmpty && eq.parametricBands.count <= EQSettings.bandCount)
+            // Boosting presets must not rely on the soft limiter: preamp cancels the peak boost.
+            let peak = BiquadMath.peakBoostDB(for: eq)
+            #expect(Double(eq.preampDB) + peak <= 0.1, "\(preset.rawValue) peak \(peak) preamp \(eq.preampDB)")
+        }
+    }
+
+    @Test("Built-in parametric presets compare equal across calls (stable ids)")
+    func stablePresetIDs() {
+        #expect(EQPreset.footstepsPro.settings == EQPreset.footstepsPro.settings)
+    }
+
+    @Test("Gain step is 0.1 dB")
+    func gainStep() {
+        #expect(EQSettings.gainStepDB == 0.1)
     }
 }

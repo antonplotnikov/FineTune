@@ -33,10 +33,7 @@ final class EQProcessor: BiquadProcessor, @unchecked Sendable {
         setEnabled(settings.isEnabled)
         _currentSettings = settings
 
-        let coefficients = BiquadMath.coefficientsForAllBands(
-            gains: settings.clampedGains,
-            sampleRate: sampleRate
-        )
+        let coefficients = BiquadMath.coefficients(for: settings, sampleRate: sampleRate)
 
         let newSetup = coefficients.withUnsafeBufferPointer { ptr in
             vDSP_biquad_CreateSetup(ptr.baseAddress!, vDSP_Length(EQSettings.bandCount))
@@ -53,10 +50,7 @@ final class EQProcessor: BiquadProcessor, @unchecked Sendable {
 
     override func recomputeCoefficients() -> (coefficients: [Double], sectionCount: Int)? {
         guard let settings = _currentSettings else { return nil }
-        let coefficients = BiquadMath.coefficientsForAllBands(
-            gains: settings.clampedGains,
-            sampleRate: sampleRate
-        )
+        let coefficients = BiquadMath.coefficients(for: settings, sampleRate: sampleRate)
         return (coefficients, EQSettings.bandCount)
     }
 }

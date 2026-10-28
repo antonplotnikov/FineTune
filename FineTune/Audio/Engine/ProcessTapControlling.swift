@@ -20,6 +20,10 @@ protocol ProcessTapControlling: AnyObject, Sendable {
     func invalidate()
     func invalidateAsync() async
     func updateEQSettings(_ settings: EQSettings)
+    /// Starts/stops feeding the EQ analyzer. Stopped by default so the audio thread does no extra work.
+    func setSpectrumCapture(_ enabled: Bool)
+    /// Latest log-spaced dBFS spectrum, or nil when capture is off or unsupported.
+    func spectrumFrame() -> [Float]?
     func updateAutoEQProfile(_ profile: AutoEQProfile?)
     func setAutoEQPreampEnabled(_ enabled: Bool)
     func updateLoudnessCompensation(volume: Float, enabled: Bool)
@@ -63,4 +67,10 @@ extension ProcessTapControlling {
     func recreateForOutputRateChange() async throws {
         // Default no-op for mocks that don't override
     }
+
+    func setSpectrumCapture(_ enabled: Bool) {}
+
+
+
+    func spectrumFrame() -> [Float]? { nil }
 }
