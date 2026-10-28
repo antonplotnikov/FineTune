@@ -256,6 +256,54 @@ struct SpatialTests {
     }
 }
 
+@Suite("GameProfileMatcher")
+struct GameProfileMatcherTests {
+
+    private let fps = GameProfile(name: "FPS", bundleIDs: ["com.game.fps"])
+    private let fallback = GameProfile(name: "Any game", appliesToDetectedGames: true)
+
+    @Test("Explicit bundle match wins over the detected-games fallback")
+    func explicitWins() {
+        let match = GameProfileMatcher.profile(for: "com.game.fps", isDetectedGame: true, in: [fallback, fps])
+        #expect(match?.name == "FPS")
+    }
+
+    @Test("Detected games fall back to the default game profile")
+    func detected() {
+        #expect(GameProfileMatcher.profile(for: "com.other.game", isDetectedGame: true, in: [fps, fallback])?.name == "Any game")
+    }
+
+    @Test("Non-games without an explicit match get nothing")
+    func nonGame() {
+        #expect(GameProfileMatcher.profile(for: "com.apple.Music", isDetectedGame: false, in: [fps, fallback]) == nil)
+    }
+
+    @Test("Disabled profiles never match")
+    func disabled() {
+        var off = fps; off.isEnabled = false
+        var offFallback = fallback; offFallback.isEnabled = false
+        #expect(GameProfileMatcher.profile(for: "com.game.fps", isDetectedGame: true, in: [off, offFallback]) == nil)
+    }
+
+    @Test("Templates produce usable profiles")
+    func templates() {
+        for template in GameProfileTemplate.allCases {
+            let p = template.makeProfile()
+            #expect(p.name == template.name)
+            if template != .blank { #expect(p.eq != nil && p.dsp != nil) }
+        }
+    }
+
+    @Test("Profile round-trips through JSON and decodes with defaults")
+    func codable() throws {
+        let p = GameProfileTemplate.cinematic.makeProfile()
+        let data = try JSONEncoder().encode(p)
+        #expect(try JSONDecoder().decode(GameProfile.self, from: data) == p)
+        let bare = try JSONDecoder().decode(GameProfile.self, from: Data("{}".utf8))
+        #expect(bare.isEnabled && bare.autoApply && bare.bundleIDs.isEmpty)
+    }
+}
+
 @Suite("ChannelDSPProcessor — state after re-enabling")
 struct ProcessorReenableTests {
 

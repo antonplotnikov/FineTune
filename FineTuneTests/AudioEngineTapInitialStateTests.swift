@@ -519,9 +519,17 @@ struct RecordingProcessTapControllerContractTests {
 
 // MARK: - Game profiles & channel DSP
 
-@Suite("AudioEngine — channel DSP")
+@Suite("AudioEngine — game profiles and channel DSP")
 @MainActor
 struct AudioEngineGameProfileTests {
+
+    private func profile(for fix: Fixture, autoApply: Bool = true, detected: Bool = false) -> GameProfile {
+        var p = GameProfileTemplate.competitiveFPS.makeProfile()
+        p.bundleIDs = detected ? [] : [fix.app.persistenceIdentifier]
+        p.appliesToDetectedGames = detected
+        p.autoApply = autoApply
+        return p
+    }
 
     @Test("Persisted channel DSP lands in TapInitialState")
     func dspCarried() throws {
@@ -560,4 +568,104 @@ struct AudioEngineGameProfileTests {
         #expect(fix.settings.getChannelDSP(for: "x") == .off)
     }
 
+    @Test("An explicit profile is written before the tap starts, so the tap activates with it")
+    func profileAppliedBeforeTap() throws {
+        let fix = makeFixture()
+        fix.deviceVolume.defaultDeviceUID = fix.device.uid
+        let p = profile(for: fix)
+        fix.settings.addGameProfile(p)
+
+        fix.engine.applyPersistedSettings()
+
+        let snap = try #require(capturedInitial(fix), "applyPersistedSettings should have created a tap")
+        #expect(snap.channelDSPSettings == p.dsp)
+        #expect(snap.eqSettings.hasSameCurve(as: p.eq!))
+    }
+
+    @Test("Profiles with autoApply off are left alone")
+    func manualOnly() {
+        let fix = makeFixture()
+        fix.settings.addGameProfile(profile(for: fix, autoApply: false))
+        fix.engine.applyPersistedSettings()
+        #expect(fix.settings.getChannelDSP(for: fix.app.persistenceIdentifier) == .off)
+    }
+
+    @Test("Detected games use the default game profile")
+    func detectedGame() {
+        let fix = makeFixture()
+        fix.engine.gameDetector = { $0 == "com.test.tapinitial" }
+        let p = profile(for: fix, detected: true)
+        fix.settings.addGameProfile(p)
+
+        fix.engine.applyPersistedSettings()
+
+        #expect(fix.settings.getChannelDSP(for: fix.app.persistenceIdentifier) == p.dsp)
+    }
+
+    @Test("Non-game apps are not touched by the detected-games profile")
+    func nonGameUntouched() {
+        let fix = makeFixture()
+        fix.engine.gameDetector = { _ in false }
+        fix.settings.addGameProfile(profile(for: fix, detected: true))
+
+        fix.engine.applyPersistedSettings()
+
+        #expect(fix.settings.getChannelDSP(for: fix.app.persistenceIdentifier) == .off)
+    }
+
+    @Test("A profile is applied once per process, so later tweaks survive")
+    func appliedOncePerProcess() {
+        let fix = makeFixture()
+        let p = profile(for: fix)
+        fix.settings.addGameProfile(p)
+        fix.engine.applyPersistedSettings()
+
+        fix.settings.setChannelDSP(ChannelDSPSettings.off, for: fix.app.persistenceIdentifier)
+        fix.engine.applyPersistedSettings()
+
+        #expect(fix.settings.getChannelDSP(for: fix.app.persistenceIdentifier) == .off)
+    }
+
+    @Test("Apply now pushes the profile to a running app")
+    func applyNow() {
+        let fix = makeFixture()
+        let p = profile(for: fix, autoApply: false)
+        fix.settings.addGameProfile(p)
+
+        let count = fix.engine.applyGameProfileToRunningApps(p)
+
+        #expect(count == 1)
+        #expect(fix.settings.getChannelDSP(for: fix.app.persistenceIdentifier) == p.dsp)
+    }
+
+    @Test("Settings reset clears profiles and channel DSP")
+    func resetClears() {
+        let fix = makeFixture()
+        fix.settings.addGameProfile(profile(for: fix))
+        var dsp = ChannelDSPSettings()
+        dsp.dynamics = DynamicsPreset.gameNight.settings
+        fix.settings.setChannelDSP(dsp, for: fix.app.persistenceIdentifier)
+
+        fix.settings.resetAllSettings()
+
+        #expect(fix.settings.gameProfiles.isEmpty)
+        #expect(fix.settings.getChannelDSP(for: fix.app.persistenceIdentifier) == .off)
+    }
+
+    @Test("Profiles and DSP survive a JSON round trip of Settings")
+    func settingsRoundTrip() throws {
+        var s = SettingsManager.Settings()
+        s.gameProfiles = [GameProfileTemplate.nightMode.makeProfile()]
+        s.appChannelDSP["com.x"] = GameProfileTemplate.cinematic.makeProfile().dsp!
+        let data = try JSONEncoder().encode(s)
+        let back = try JSONDecoder().decode(SettingsManager.Settings.self, from: data)
+        #expect(back.gameProfiles == s.gameProfiles)
+        #expect(back.appChannelDSP == s.appChannelDSP)
+    }
+
+    @Test("v13 settings without the new keys still load")
+    func legacyLoads() throws {
+        let back = try JSONDecoder().decode(SettingsManager.Settings.self, from: Data(#"{"version":13}"#.utf8))
+        #expect(back.gameProfiles.isEmpty && back.appChannelDSP.isEmpty)
+    }
 }

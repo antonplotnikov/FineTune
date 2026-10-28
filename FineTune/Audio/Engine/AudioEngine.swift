@@ -1,4 +1,5 @@
 // FineTune/Audio/Engine/AudioEngine.swift
+import AppKit
 import AudioToolbox
 import Foundation
 import os
@@ -39,6 +40,10 @@ final class AudioEngine {
     var pendingAliveWatcherCount: Int { aliveWatchers.count }
 
     private var appliedPIDs: Set<pid_t> = []
+    private var gameProfileAppliedPIDs: Set<pid_t> = []
+    private var gameCategoryCache: [String: Bool] = [:]
+    /// Decides whether a bundle ID is a game. Overridable for testing.
+    var gameDetector: @MainActor (String) -> Bool = { AudioEngine.bundleDeclaresGameCategory($0) }
     private var appDeviceRouting: [pid_t: String] = [:]  // pid → deviceUID (always explicit)
     private var followsDefault: Set<pid_t> = []  // Apps that follow system default
     /// The last output default confirmed by FineTune (user change or programmatic switch).
@@ -564,6 +569,14 @@ final class AudioEngine {
     }
 
     /// Get audio level for a specific app
+    /// Default game detection: the app's Info.plist declares the Games category.
+    nonisolated static func bundleDeclaresGameCategory(_ bundleID: String) -> Bool {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID),
+              let category = Bundle(url: url)?.infoDictionary?["LSApplicationCategoryType"] as? String
+        else { return false }
+        return category.hasPrefix("public.app-category.") && category.contains("games")
+    }
+
     func getAudioLevel(for app: AudioApp) -> Float {
         taps[app.id]?.audioLevel ?? 0.0
     }
@@ -581,6 +594,68 @@ final class AudioEngine {
 
     func channelDSPGainReduction(for app: AudioApp) -> Float {
         taps[app.id]?.channelDSPGainReduction ?? 0
+    }
+
+    // MARK: - Game Profiles
+
+    /// True when the app's bundle declares the Games category. Cached per bundle ID.
+    func isDetectedGame(bundleID: String) -> Bool {
+        if let cached = gameCategoryCache[bundleID] { return cached }
+        let result = gameDetector(bundleID)
+        gameCategoryCache[bundleID] = result
+        return result
+    }
+
+    func matchingGameProfile(for app: AudioApp) -> GameProfile? {
+        let id = app.persistenceIdentifier
+        return GameProfileMatcher.profile(
+            for: id,
+            isDetectedGame: isDetectedGame(bundleID: id),
+            in: settingsManager.gameProfiles
+        )
+    }
+
+    /// Writes the profile's settings to persistence only (a tap created afterwards picks them up).
+    private func persistGameProfile(_ profile: GameProfile, identifier: String) {
+        if let eq = profile.eq { settingsManager.setEQSettings(eq, for: identifier) }
+        if let dsp = profile.dsp { settingsManager.setChannelDSP(dsp, for: identifier) }
+    }
+
+    /// Called once per process before its tap is created.
+    private func applyGameProfileIfNeeded(for app: AudioApp) {
+        guard !gameProfileAppliedPIDs.contains(app.id) else { return }
+        gameProfileAppliedPIDs.insert(app.id)
+        guard let profile = matchingGameProfile(for: app), profile.autoApply else { return }
+        persistGameProfile(profile, identifier: app.persistenceIdentifier)
+        logger.info("Applied game profile '\(profile.name)' to \(app.name)")
+    }
+
+    /// Applies a profile to one running app right now (also pushes to its live tap).
+    func applyGameProfile(_ profile: GameProfile, to app: AudioApp) {
+        persistGameProfile(profile, identifier: app.persistenceIdentifier)
+        if let eq = profile.eq { taps[app.id]?.updateEQSettings(eq) }
+        if let dsp = profile.dsp { taps[app.id]?.updateChannelDSP(dsp) }
+    }
+
+    /// Applies a profile to every running app it covers. Returns how many apps were updated.
+    @discardableResult
+    func applyGameProfileToRunningApps(_ profile: GameProfile) -> Int {
+        var count = 0
+        for app in apps {
+            let id = app.persistenceIdentifier
+            let covered = profile.bundleIDs.contains(id)
+                || (profile.appliesToDetectedGames && isDetectedGame(bundleID: id)
+                    && matchingGameProfile(for: app)?.id == profile.id)
+            guard covered else { continue }
+            applyGameProfile(profile, to: app)
+            count += 1
+        }
+        return count
+    }
+
+    /// Snapshot of an app's current EQ and DSP, for building a profile from live settings.
+    func captureProfileSettings(from app: AudioApp) -> (eq: EQSettings, dsp: ChannelDSPSettings) {
+        (getEQSettings(for: app), getChannelDSP(for: app))
     }
 
     // MARK: - EQ Analyzer
@@ -1132,6 +1207,9 @@ final class AudioEngine {
         for app in apps {
             guard !appliedPIDs.contains(app.id) else { continue }
             guard !settingsManager.isIgnored(app.persistenceIdentifier) else { continue }
+
+            // Game profile: write EQ/DSP before the tap is created so it starts with them.
+            applyGameProfileIfNeeded(for: app)
 
             // Load saved device selection mode (single vs multi)
             let savedMode = volumeState.loadSavedDeviceSelectionMode(for: app.id, identifier: app.persistenceIdentifier)

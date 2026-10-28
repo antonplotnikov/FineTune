@@ -147,6 +147,7 @@ final class SettingsManager {
 
         // Per-app dynamics/spatial chain and game profiles
         var appChannelDSP: [String: ChannelDSPSettings] = [:]  // bundleID → compressor/limiter/spatial
+        var gameProfiles: [GameProfile] = []
 
         init() {}
 
@@ -198,6 +199,7 @@ final class SettingsManager {
             browserTabSettings = try c.decodeIfPresent([String: BrowserTabSettings].self, forKey: .browserTabSettings) ?? [:]
             browserBridgeToken = try c.decodeIfPresent(String.self, forKey: .browserBridgeToken)
             appChannelDSP = try c.decodeIfPresent([String: ChannelDSPSettings].self, forKey: .appChannelDSP) ?? [:]
+            gameProfiles = try c.decodeIfPresent([GameProfile].self, forKey: .gameProfiles) ?? []
         }
     }
 
@@ -292,6 +294,24 @@ final class SettingsManager {
         } else {
             settings.appChannelDSP[appIdentifier] = dsp
         }
+        scheduleSave()
+    }
+
+    var gameProfiles: [GameProfile] { settings.gameProfiles }
+
+    func addGameProfile(_ profile: GameProfile) {
+        settings.gameProfiles.append(profile)
+        scheduleSave()
+    }
+
+    func updateGameProfile(_ profile: GameProfile) {
+        guard let index = settings.gameProfiles.firstIndex(where: { $0.id == profile.id }) else { return }
+        settings.gameProfiles[index] = profile
+        scheduleSave()
+    }
+
+    func deleteGameProfile(id: UUID) {
+        settings.gameProfiles.removeAll { $0.id == id }
         scheduleSave()
     }
 
@@ -890,6 +910,7 @@ final class SettingsManager {
         settings.appMutes.removeAll()
         settings.appEQSettings.removeAll()
         settings.appChannelDSP.removeAll()
+        settings.gameProfiles.removeAll()
         settings.pinnedApps.removeAll()
         settings.pinnedAppInfo.removeAll()
         settings.ignoredApps.removeAll()
