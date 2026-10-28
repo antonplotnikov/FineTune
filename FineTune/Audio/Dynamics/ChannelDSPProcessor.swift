@@ -26,6 +26,10 @@ nonisolated final class ChannelDSPProcessor: @unchecked Sendable {
     private nonisolated(unsafe) var crossAmount: Float = 0
     private nonisolated(unsafe) var roomAmount: Float = 0
     private nonisolated(unsafe) var levelCompensation: Float = 1
+    private nonisolated(unsafe) var binauralOn = false
+    private nonisolated(unsafe) var binauralMix: Float = 1
+    private let binaural = BinauralConvolver()
+    private nonisolated(unsafe) var configuredAzimuth = -1
     private nonisolated(unsafe) var configuredRate: Double = -1
 
     private nonisolated(unsafe) var compOn = false
@@ -112,7 +116,7 @@ nonisolated final class ChannelDSPProcessor: @unchecked Sendable {
         // A stage that is being switched on must not inherit state from before it was off.
         let nowSpatial = !s.isNeutral
         if (d.compressorEnabled && !compOn) || (d.limiterEnabled && !limOn)
-            || (nowSpatial && !spatialOn) {
+            || (nowSpatial && !spatialOn) || (s.isEnabled && s.binaural && s.binauralMix > 0 && !binauralOn) {
             stateResetRequested = true
         }
 
@@ -120,8 +124,19 @@ nonisolated final class ChannelDSPProcessor: @unchecked Sendable {
         widthAmount = Float(s.width)
         crossAmount = Float(s.crossfeed)
         roomAmount = Float(s.room)
-        levelCompensation = 1 / (1 + crossAmount * 0.6 + roomAmount * 0.35)
+        // Binaural replaces crossfeed (the HRTF already contains the head-shadowed far-ear path).
+        let wantsBinaural = s.isEnabled && s.binaural && s.binauralMix > 0
+        levelCompensation = 1 / (1 + (wantsBinaural ? 0 : crossAmount * 0.6) + roomAmount * 0.35)
         spatialOn = !s.isNeutral
+        let azimuth = KEMARHRTF.nearestAzimuth(to: s.speakerAngle)
+        if wantsBinaural, azimuth != configuredAzimuth || sampleRate != configuredRate {
+            // Prepared off the audio thread; the convolver swaps banks atomically.
+            binaural.configure(speakerAngle: s.speakerAngle, sampleRate: sampleRate)
+            configuredAzimuth = azimuth
+            configuredRate = sampleRate
+        }
+        binauralMix = Float(s.binauralMix)
+        binauralOn = wantsBinaural
 
         // Compressor
         thresholdDB = Float(d.thresholdDB)
@@ -170,6 +185,22 @@ nonisolated final class ChannelDSPProcessor: @unchecked Sendable {
 
         if stateResetRequested { stateResetRequested = false; resetAllState() }
 
+        // Binaural runs block-wise ahead of the per-sample chain: width first, then the HRTF convolution.
+        let doBinaural = spatialOn && binauralOn
+        if doBinaural {
+            let width = widthAmount
+            if width != 1 {
+                for frame in 0..<frameCount {
+                    let l = buffer[frame * 2], r = buffer[frame * 2 + 1]
+                    let mid = (l + r) * 0.5
+                    let side = (l - r) * 0.5 * width
+                    buffer[frame * 2] = mid + side
+                    buffer[frame * 2 + 1] = mid - side
+                }
+            }
+            binaural.process(buffer, frameCount: frameCount, mix: binauralMix)
+        }
+
         let dMask = Self.delayCapacity - 1
         let lMask = Self.lookaheadCapacity - 1
         let doSpatial = spatialOn, doComp = compOn, doLim = limOn
@@ -186,7 +217,7 @@ nonisolated final class ChannelDSPProcessor: @unchecked Sendable {
 
             // ---- Spatial ----
             if doSpatial {
-                if width != 1 {
+                if width != 1 && !doBinaural {
                     let mid = (l + r) * 0.5
                     let side = (l - r) * 0.5 * width
                     l = mid + side
@@ -197,7 +228,7 @@ nonisolated final class ChannelDSPProcessor: @unchecked Sendable {
                 delayR[w & dMask] = r
                 var outL = l, outR = r
 
-                if cross > 0 {
+                if cross > 0 && !doBinaural {
                     // Head-shadow: delayed, low-passed opposite channel.
                     let xl = delayR[(w - crossDelay) & dMask]
                     let xr = delayL[(w - crossDelay) & dMask]
@@ -301,6 +332,7 @@ nonisolated final class ChannelDSPProcessor: @unchecked Sendable {
         lpL = 0; lpR = 0
         for i in 0..<Self.delayCapacity { delayL[i] = 0; delayR[i] = 0 }
         resetLimiter()
+        binaural.resetHistory()
     }
 
     private func resetLimiter() {

@@ -65,6 +65,8 @@ nonisolated struct DynamicsSettings: Codable, Equatable, Sendable {
 nonisolated struct SpatialSettings: Codable, Equatable, Sendable {
     static let widthRange: ClosedRange<Double> = 0...2
     static let amountRange: ClosedRange<Double> = 0...1
+    /// Virtual speaker azimuth (degrees from straight ahead). The HRTF set is measured on a 5° grid.
+    static let speakerAngleRange: ClosedRange<Double> = 10...110
 
     var isEnabled = false
     /// Stereo width: 1 = unchanged, 0 = mono, 2 = twice as wide.
@@ -73,6 +75,14 @@ nonisolated struct SpatialSettings: Codable, Equatable, Sendable {
     var crossfeed: Double = 0
     /// Amount of short early reflections for a sense of space.
     var room: Double = 0
+
+    /// Binaural rendering: the stereo signal is placed on two virtual speakers using measured
+    /// head-related transfer functions. Replaces crossfeed; intended for headphones.
+    var binaural = false
+    /// Azimuth of each virtual speaker in degrees (30° = a classic stereo triangle).
+    var speakerAngle: Double = 30
+    /// Dry/wet blend of the binaural rendering.
+    var binauralMix: Double = 1
 
     init() {}
 
@@ -86,6 +96,9 @@ nonisolated struct SpatialSettings: Codable, Equatable, Sendable {
         width = try get(.width, Self.widthRange, 1)
         crossfeed = try get(.crossfeed, Self.amountRange, 0)
         room = try get(.room, Self.amountRange, 0)
+        binaural = try c.decodeIfPresent(Bool.self, forKey: .binaural) ?? false
+        speakerAngle = try get(.speakerAngle, Self.speakerAngleRange, 30)
+        binauralMix = try get(.binauralMix, Self.amountRange, 1)
     }
 
     var clamped: SpatialSettings {
@@ -94,11 +107,13 @@ nonisolated struct SpatialSettings: Codable, Equatable, Sendable {
         s.width = clamp(width, Self.widthRange, 1)
         s.crossfeed = clamp(crossfeed, Self.amountRange, 0)
         s.room = clamp(room, Self.amountRange, 0)
+        s.speakerAngle = clamp(speakerAngle, Self.speakerAngleRange, 30)
+        s.binauralMix = clamp(binauralMix, Self.amountRange, 1)
         return s
     }
 
     /// True when enabling would change nothing audible.
-    var isNeutral: Bool { !isEnabled || (width == 1 && crossfeed == 0 && room == 0) }
+    var isNeutral: Bool { !isEnabled || (width == 1 && crossfeed == 0 && room == 0 && !(binaural && binauralMix > 0)) }
 }
 
 /// Per-app dynamics and spatial processing, applied after the EQ.
@@ -166,7 +181,7 @@ nonisolated enum DynamicsPreset: String, CaseIterable, Identifiable {
 }
 
 nonisolated enum SpatialPreset: String, CaseIterable, Identifiable {
-    case off, wideStage, headphoneCrossfeed, virtualSurround, arena
+    case off, wideStage, headphoneCrossfeed, virtualSurround, arena, binauralStudio, binauralWide, binauralGame
 
     var id: String { rawValue }
 
@@ -177,6 +192,9 @@ nonisolated enum SpatialPreset: String, CaseIterable, Identifiable {
         case .headphoneCrossfeed: return "Headphone Crossfeed"
         case .virtualSurround: return "Virtual Surround"
         case .arena: return "Arena"
+        case .binauralStudio: return "Binaural Studio (30°)"
+        case .binauralWide: return "Binaural Wide (55°)"
+        case .binauralGame: return "Binaural Game"
         }
     }
 
@@ -193,6 +211,13 @@ nonisolated enum SpatialPreset: String, CaseIterable, Identifiable {
             s.isEnabled = true; s.width = 1.35; s.crossfeed = 0.3; s.room = 0.35
         case .arena:
             s.isEnabled = true; s.width = 1.6; s.crossfeed = 0.2; s.room = 0.7
+        case .binauralStudio:
+            s.isEnabled = true; s.binaural = true; s.speakerAngle = 30
+        case .binauralWide:
+            s.isEnabled = true; s.binaural = true; s.speakerAngle = 55
+        case .binauralGame:
+            // Wider stage plus a little room: footsteps and gunfire land outside the head.
+            s.isEnabled = true; s.binaural = true; s.speakerAngle = 45; s.room = 0.25
         }
         return s
     }

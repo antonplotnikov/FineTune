@@ -189,10 +189,27 @@ struct SpatialPanelView: View {
 
             DSPSliderRow(label: "Width", value: bind(\.width, scale: 100), range: 0...200, decimals: 0, unit: "%", isEnabled: on)
 
-            DSPSliderRow(label: "Crossfeed", value: bind(\.crossfeed, scale: 100), range: 0...100, decimals: 0, unit: "%", isEnabled: on)
+            // Binaural (HRTF) rendering
+            VStack(spacing: 6) {
+                Toggle(isOn: Binding(get: { settings.spatial.binaural },
+                                     set: { settings.spatial.binaural = $0; onChange(settings) })) {
+                    Text("Binaural (HRTF)").font(DesignTokens.Typography.pickerText)
+                }
+                .toggleStyle(.switch).controlSize(.mini)
+                .disabled(!on)
+
+                let binauralOn = on && settings.spatial.binaural
+                DSPSliderRow(label: "Speakers", value: bind(\.speakerAngle, scale: 1),
+                             range: SpatialSettings.speakerAngleRange, decimals: 0, unit: "°", isEnabled: binauralOn)
+                DSPSliderRow(label: "Binaural", value: bind(\.binauralMix, scale: 100),
+                             range: 0...100, decimals: 0, unit: "%", isEnabled: binauralOn)
+            }
+
+            DSPSliderRow(label: "Crossfeed", value: bind(\.crossfeed, scale: 100), range: 0...100, decimals: 0, unit: "%",
+                         isEnabled: on && !settings.spatial.binaural)
             DSPSliderRow(label: "Room", value: bind(\.room, scale: 100), range: 0...100, decimals: 0, unit: "%", isEnabled: on)
 
-            Text("Width widens or narrows the stereo image. Crossfeed mimics speakers by feeding a softened, slightly delayed copy of each side to the other ear — it reduces fatigue on headphones. Room adds short early reflections. Applies to stereo output.")
+            Text("Binaural places your stereo mix on two virtual speakers using measured head-related transfer functions (MIT KEMAR dummy head), so sound seems to come from outside your head. Use headphones. Speakers sets how far apart they sit (30° is the classic stereo triangle; wider gives a bigger stage). Crossfeed is a simpler alternative and is replaced while Binaural is on. Applies to stereo output.")
                 .font(.system(size: 9))
                 .foregroundStyle(DesignTokens.Colors.textTertiary)
                 .fixedSize(horizontal: false, vertical: true)

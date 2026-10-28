@@ -130,3 +130,7 @@ FineTune is free and open source, forever. If it made your day a little easier, 
 ## License
 
 [GPL v3](LICENSE)
+
+### Acknowledgements
+
+Binaural rendering uses head-related impulse responses from *HRTF measurements of a KEMAR dummy-head microphone*, Bill Gardner and Keith Martin, MIT Media Lab Machine Listening Group (1994), [sound.media.mit.edu/resources/KEMAR](https://sound.media.mit.edu/resources/KEMAR.html). The data is © 1994 MIT Media Laboratory and provided free with no restrictions on use, provided the authors are cited.

@@ -57,8 +57,15 @@ struct AboutTab: View {
                 )
             }
 
+            Text("Binaural audio uses HRTF measurements of a KEMAR dummy head by Bill Gardner and Keith Martin, MIT Media Lab (1994).")
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 12)
+                .padding(.horizontal, 24)
+
             footer
-                .padding(.top, 16)
+                .padding(.top, 8)
                 .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
