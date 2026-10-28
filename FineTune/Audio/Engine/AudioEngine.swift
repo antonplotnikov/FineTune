@@ -16,6 +16,8 @@ final class AudioEngine {
     let autoEQProfileManager: AutoEQProfileManager
     let permission: AudioRecordingPermission
     let appListCoordinator: AppListCoordinator
+    /// Per-tab control for Chromium browsers via the companion extension.
+    let browserTabs: BrowserTabController
 
     #if !APP_STORE
     let ddcController: DDCController
@@ -186,6 +188,7 @@ final class AudioEngine {
         let manager = settingsManager
         self.settingsManager = manager
         self.appListCoordinator = AppListCoordinator(settingsManager: manager)
+        self.browserTabs = BrowserTabController(settingsManager: manager)
         self.autoEQProfileManager = autoEQProfileManager
         self.volumeState = VolumeState(settingsManager: manager)
         self.isAliveCheck = isAlive ?? { $0.isDeviceAlive() }
@@ -261,6 +264,7 @@ final class AudioEngine {
         wireCallbacks()
 
         if startMonitorsAutomatically {
+            browserTabs.start()
             Task { @MainActor in
                 if self.permission.status == .authorized {
                     self.processMonitor.start()
@@ -595,6 +599,7 @@ final class AudioEngine {
 
     func stop() {
         stopHealthMonitor()
+        browserTabs.stop()
         processMonitor.stop()
         deviceMonitor.stop()
         for tap in taps.values {

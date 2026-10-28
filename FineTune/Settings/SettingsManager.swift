@@ -92,7 +92,7 @@ final class SettingsManager {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "FineTune", category: "SettingsManager")
 
     struct Settings: Codable {
-        var version: Int = 12
+        var version: Int = 13
         var appVolumes: [String: Float] = [:]
         var appDeviceRouting: [String: String] = [:]  // bundleID → deviceUID
         var appMutes: [String: Bool] = [:]  // bundleID → isMuted
@@ -141,6 +141,10 @@ final class SettingsManager {
         // User-created EQ presets (named EQ curves)
         var userEQPresets: [UserEQPreset] = []
 
+        // Browser extension bridge: per-tab settings keyed by hostname, and the shared auth token
+        var browserTabSettings: [String: BrowserTabSettings] = [:]
+        var browserBridgeToken: String? = nil
+
         init() {}
 
         init(from decoder: Decoder) throws {
@@ -188,6 +192,8 @@ final class SettingsManager {
             favoriteAutoEQProfiles = try c.decodeIfPresent(Set<String>.self, forKey: .favoriteAutoEQProfiles) ?? []
             autoEQPreampEnabled = try c.decodeIfPresent(Bool.self, forKey: .autoEQPreampEnabled) ?? true
             userEQPresets = try c.decodeIfPresent([UserEQPreset].self, forKey: .userEQPresets) ?? []
+            browserTabSettings = try c.decodeIfPresent([String: BrowserTabSettings].self, forKey: .browserTabSettings) ?? [:]
+            browserBridgeToken = try c.decodeIfPresent(String.self, forKey: .browserBridgeToken)
         }
     }
 
@@ -268,6 +274,30 @@ final class SettingsManager {
     func setEQSettings(_ eqSettings: EQSettings, for appIdentifier: String) {
         settings.appEQSettings[appIdentifier] = eqSettings
         scheduleSave()
+    }
+
+    // MARK: - Browser Tabs
+
+    func getBrowserTabSettings(for host: String) -> BrowserTabSettings {
+        settings.browserTabSettings[host] ?? .default
+    }
+
+    func setBrowserTabSettings(_ tabSettings: BrowserTabSettings, for host: String) {
+        if tabSettings.isDefault {
+            settings.browserTabSettings.removeValue(forKey: host)
+        } else {
+            settings.browserTabSettings[host] = tabSettings
+        }
+        scheduleSave()
+    }
+
+    /// Returns the bridge auth token, generating and persisting one on first use.
+    func browserBridgeToken() -> String {
+        if let token = settings.browserBridgeToken, !token.isEmpty { return token }
+        let token = UUID().uuidString
+        settings.browserBridgeToken = token
+        scheduleSave()
+        return token
     }
 
     // MARK: - Device Selection Mode

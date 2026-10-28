@@ -165,6 +165,35 @@ struct ParametricMathTests {
     }
 }
 
+@Suite("Browser bridge — band payload")
+struct BandPayloadTests {
+
+    @Test("Graphic mode produces ten peaking bands at the fixed centers")
+    func graphic() {
+        let bands = BrowserBridgeMessage.bandPayload(for: EQSettings(bandGains: [4, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+        #expect(bands.count == 10)
+        #expect(bands[0]["type"] as? String == "peaking")
+        #expect(bands[0]["gain"] as? Double == 4)
+    }
+
+    @Test("Parametric mode maps filter types to Web Audio names and pads to ten")
+    func parametric() {
+        var eq = EQSettings(); eq.mode = .parametric
+        eq.parametricBands = [ParametricBand(type: .highPass, frequency: 80), ParametricBand(type: .lowShelf, frequency: 120, gainDB: 3)]
+        let bands = BrowserBridgeMessage.bandPayload(for: eq)
+        #expect(bands.count == 10)
+        #expect(bands[0]["type"] as? String == "highpass")
+        #expect(bands[1]["type"] as? String == "lowshelf")
+        #expect(bands[5]["enabled"] as? Bool == false)
+    }
+
+    @Test("Disabled EQ sends all bands disabled")
+    func disabled() {
+        var eq = EQSettings(bandGains: Array(repeating: 6, count: 10)); eq.isEnabled = false
+        #expect(BrowserBridgeMessage.bandPayload(for: eq).allSatisfy { $0["enabled"] as? Bool == false })
+    }
+}
+
 @Suite("EQ preamp")
 struct EQPreampTests {
     private let sr = 48_000.0

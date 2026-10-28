@@ -843,11 +843,27 @@ struct MenuBarPopupView: View {
 
     private func appsContent(scrollProxy: ScrollViewProxy) -> some View {
         let presets = audioEngine.settingsManager.getUserPresets()
+        // The extension talks to one browser, so tabs attach to the first active Chromium row.
+        let tabsHostID = audioEngine.displayableApps.first { displayable in
+            if case .active(let app) = displayable { return BrowserTabController.isChromiumBrowser(bundleID: app.bundleID) }
+            return false
+        }?.id
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(audioEngine.displayableApps) { displayableApp in
                 switch displayableApp {
                 case .active(let app):
                     activeAppRow(app: app, displayableApp: displayableApp, userPresets: presets, scrollProxy: scrollProxy)
+                    if displayableApp.id == tabsHostID {
+                        BrowserTabsSection(
+                            controller: audioEngine.browserTabs,
+                            userPresets: presets,
+                            onSavePreset: { name, settings in
+                                audioEngine.settingsManager.createUserPreset(name: name, settings: settings)
+                            },
+                            onDeleteUserPreset: { audioEngine.settingsManager.deleteUserPreset(id: $0) },
+                            onRenameUserPreset: { audioEngine.settingsManager.updateUserPreset(id: $0, name: $1) }
+                        )
+                    }
 
                 case .pinnedInactive(let info):
                     inactiveAppRow(info: info, displayableApp: displayableApp, userPresets: presets, scrollProxy: scrollProxy)

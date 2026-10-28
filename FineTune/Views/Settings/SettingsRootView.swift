@@ -13,7 +13,7 @@ struct SettingsRootView: View {
     @ObservedObject var updateManager: UpdateManager
 
     enum Section: String, Hashable, CaseIterable, Identifiable {
-        case general, audio, shortcuts, updates, about
+        case general, audio, browser, shortcuts, updates, about
         var id: Self { self }
     }
 
@@ -38,6 +38,10 @@ struct SettingsRootView: View {
             )
             .tabItem { Label("Audio", systemImage: "speaker.wave.2") }
             .tag(Section.audio)
+
+            BrowserSettingsTab(controller: audioEngine.browserTabs)
+                .tabItem { Label("Browser", systemImage: "globe") }
+                .tag(Section.browser)
 
             ShortcutsTab(
                 settings: settings,

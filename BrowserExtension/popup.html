@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  body { font: 13px -apple-system, system-ui, sans-serif; width: 260px; margin: 12px; }
+  label { display: block; margin: 8px 0 2px; color: #666; }
+  input { width: 100%; box-sizing: border-box; padding: 4px; }
+  button { margin-top: 10px; width: 100%; padding: 6px; }
+  #status { margin-top: 8px; color: #666; min-height: 1.2em; }
+</style>
+<label for="token">FineTune token (Settings → Browser)</label>
+<input id="token" type="text" spellcheck="false" autocomplete="off">
+<label for="port">Port</label>
+<input id="port" type="number" min="1024" max="65535">
+<button id="save">Save &amp; connect</button>
+<button id="grant">Allow audio control for this tab</button>
+<div id="status"></div>
+<script src="popup.js"></script>

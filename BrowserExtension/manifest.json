@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "FineTune Tab Audio",
+  "version": "0.1.0",
+  "description": "Per-tab volume, mute and EQ controlled from the FineTune macOS app.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "tabs",
+    "tabCapture",
+    "offscreen",
+    "storage",
+    "activeTab",
+    "alarms"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "FineTune Tab Audio",
+    "default_popup": "popup.html"
+  }
+}
