@@ -54,6 +54,7 @@ That's it. Adjust sliders, route audio, and explore EQ from the menu bar.
 - **Per-app volume** — Individual sliders and mute for each application
 - **Per-app volume boost** — 2x / 3x / 4x gain presets
 - **Parametric EQ & game presets** — Graphic or fully parametric EQ with a live analyzer, preamp, A/B compare and undo. See the [EQ guide](guide/eq.md)
+- **Dynamics, spatial audio & game profiles** — Per-app compressor and look-ahead limiter, crossfeed/width/room, and profiles that auto-apply to your games. See the [guide](guide/dynamics-spatial-games.md)
 - **Pinned apps** — Keep apps visible in the menu bar even when they're not playing, so you can configure volume, EQ, and routing in advance
 - **Ignore apps** — Completely disengage FineTune from specific apps. Tears down the audio tap so the app returns to normal macOS audio
 - **Scroll-wheel volume** — Hover any slider in the popup, the HUD, or the EQ panel and scroll to adjust.

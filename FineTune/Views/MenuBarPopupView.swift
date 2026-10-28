@@ -941,6 +941,11 @@ struct MenuBarPopupView: View {
                 },
                 isFocused: hasKeyboardEngaged && selectedRow == .app(persistenceID: displayableApp.id)
             )
+            .environment(\.channelDSPSource, ChannelDSPSource(
+                settings: { audioEngine.getChannelDSP(for: app) },
+                update: { audioEngine.setChannelDSP($0, for: app) },
+                gainReduction: { audioEngine.channelDSPGainReduction(for: app) }
+            ))
             .environment(\.eqSpectrumSource, EQSpectrumSource(
                 setActive: { audioEngine.setSpectrumCapture($0, for: app) },
                 frame: { audioEngine.spectrumFrame(for: app) }

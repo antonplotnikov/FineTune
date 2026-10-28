@@ -29,6 +29,7 @@ final class RecordingProcessTapController: ProcessTapControlling {
     /// the source-type's identity (defensive against future mutations).
     struct TapInitialStateSnapshot: Equatable {
         var eqSettings: EQSettings
+        var channelDSPSettings: ChannelDSPSettings
         var autoEQProfileID: String?
         var autoEQPreampEnabled: Bool
         var loudnessVolume: Float
@@ -38,6 +39,7 @@ final class RecordingProcessTapController: ProcessTapControlling {
         @MainActor
         init(_ s: TapInitialState) {
             self.eqSettings = s.eqSettings
+            self.channelDSPSettings = s.channelDSPSettings
             self.autoEQProfileID = s.autoEQProfile?.id
             self.autoEQPreampEnabled = s.autoEQPreampEnabled
             self.loudnessVolume = s.loudnessVolume
@@ -512,4 +514,50 @@ struct RecordingProcessTapControllerContractTests {
             Issue.record("activate() did not record an .activate event")
         }
     }
+}
+
+
+// MARK: - Game profiles & channel DSP
+
+@Suite("AudioEngine — channel DSP")
+@MainActor
+struct AudioEngineGameProfileTests {
+
+    @Test("Persisted channel DSP lands in TapInitialState")
+    func dspCarried() throws {
+        let fix = makeFixture()
+        var dsp = ChannelDSPSettings()
+        dsp.dynamics = DynamicsPreset.gameNight.settings
+        fix.settings.setChannelDSP(dsp, for: fix.app.persistenceIdentifier)
+
+        fix.engine.setDevice(for: fix.app, deviceUID: fix.device.uid)
+
+        let snap = try #require(capturedInitial(fix))
+        #expect(snap.channelDSPSettings == dsp)
+    }
+
+    @Test("setChannelDSP persists and reaches a live tap")
+    func setChannelDSPPersists() throws {
+        let fix = makeFixture()
+        fix.engine.setDevice(for: fix.app, deviceUID: fix.device.uid)
+        var dsp = ChannelDSPSettings()
+        dsp.spatial = SpatialPreset.arena.settings
+
+        fix.engine.setChannelDSP(dsp, for: fix.app)
+
+        #expect(fix.settings.getChannelDSP(for: fix.app.persistenceIdentifier) == dsp)
+        #expect(fix.engine.getChannelDSP(for: fix.app) == dsp)
+    }
+
+    @Test("Resetting channel DSP to default removes the stored entry")
+    func defaultNotStored() {
+        let fix = makeFixture()
+        var dsp = ChannelDSPSettings()
+        dsp.dynamics = DynamicsPreset.gameNight.settings
+        fix.settings.setChannelDSP(dsp, for: "x")
+        #expect(fix.settings.getChannelDSP(for: "x") == dsp)
+        fix.settings.setChannelDSP(.off, for: "x")
+        #expect(fix.settings.getChannelDSP(for: "x") == .off)
+    }
+
 }

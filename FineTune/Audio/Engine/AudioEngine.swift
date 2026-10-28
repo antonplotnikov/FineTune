@@ -568,6 +568,21 @@ final class AudioEngine {
         taps[app.id]?.audioLevel ?? 0.0
     }
 
+    // MARK: - Channel DSP (compressor / limiter / spatial)
+
+    func getChannelDSP(for app: AudioApp) -> ChannelDSPSettings {
+        settingsManager.getChannelDSP(for: app.persistenceIdentifier)
+    }
+
+    func setChannelDSP(_ dsp: ChannelDSPSettings, for app: AudioApp) {
+        settingsManager.setChannelDSP(dsp, for: app.persistenceIdentifier)
+        taps[app.id]?.updateChannelDSP(dsp)
+    }
+
+    func channelDSPGainReduction(for app: AudioApp) -> Float {
+        taps[app.id]?.channelDSPGainReduction ?? 0
+    }
+
     // MARK: - EQ Analyzer
 
     func setSpectrumCapture(_ enabled: Bool, for app: AudioApp) {
@@ -641,6 +656,7 @@ final class AudioEngine {
         for tap in taps.values {
             applyTapOutputState(to: tap, for: tap.app.id, deviceUIDs: tap.currentDeviceUIDs)
             tap.updateEQSettings(.flat)
+            tap.updateChannelDSP(.off)
             tap.updateAutoEQProfile(nil)
             tap.updateLoudnessCompensation(volume: effectiveLoudnessVolume(for: tap), enabled: false)
         }
@@ -843,6 +859,7 @@ final class AudioEngine {
         loudnessEqSettings.enabled = settingsManager.appSettings.loudnessEqualizationEnabled
         return TapInitialState(
             eqSettings: settingsManager.getEQSettings(for: app.persistenceIdentifier),
+            channelDSPSettings: settingsManager.getChannelDSP(for: app.persistenceIdentifier),
             autoEQProfile: autoEQProfileForActivation(deviceUID: primaryDeviceUID),
             autoEQPreampEnabled: settingsManager.autoEQPreampEnabled,
             loudnessVolume: deviceVolume * volumeState.getVolume(for: app.id),

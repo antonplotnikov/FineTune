@@ -35,6 +35,16 @@ struct AppRow: View {
     let onEQToggle: () -> Void
     let isFocused: Bool
 
+    /// Which panel the expanded row shows. DSP tabs appear only when a `ChannelDSPSource` is injected.
+    private enum Panel: String, CaseIterable, Identifiable {
+        case eq = "EQ", dynamics = "Dynamics", spatial = "Spatial"
+        var id: String { rawValue }
+    }
+
+    @Environment(\.channelDSPSource) private var dspSource
+    @State private var panel: Panel = .eq
+    @State private var localDSP = ChannelDSPSettings()
+
     @State private var isIconHovered = false
     @State private var localEQSettings: EQSettings
 
@@ -180,27 +190,51 @@ struct AppRow: View {
             }
             .frame(height: DesignTokens.Dimensions.rowContentHeight)
         } expandedContent: {
-            // EQ panel - shown when expanded
+            // Expanded panel: EQ, plus Dynamics/Spatial when the row provides DSP access.
             // SwiftUI calculates natural height via conditional rendering
-            EQPanelView(
-                settings: $localEQSettings,
-                userPresets: userPresets,
-                onPresetSelected: { preset in
-                    localEQSettings = preset.settings
-                    onEQChange(preset.settings)
-                },
-                onUserPresetSelected: { userPreset in
-                    localEQSettings = userPreset.settings
-                    onUserPresetSelected(userPreset)
-                },
-                onSettingsChanged: { settings in
-                    onEQChange(settings)
-                },
-                onSavePreset: onSavePreset,
-                onDeleteUserPreset: onDeleteUserPreset,
-                onRenameUserPreset: onRenameUserPreset
-            )
+            VStack(spacing: 4) {
+                if dspSource != nil {
+                    Picker("", selection: $panel) {
+                        ForEach(Panel.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .controlSize(.small)
+                    .padding(.horizontal, 2)
+                }
+
+                switch dspSource == nil ? .eq : panel {
+                case .eq:
+                    EQPanelView(
+                        settings: $localEQSettings,
+                        userPresets: userPresets,
+                        onPresetSelected: { preset in
+                            localEQSettings = preset.settings
+                            onEQChange(preset.settings)
+                        },
+                        onUserPresetSelected: { userPreset in
+                            localEQSettings = userPreset.settings
+                            onUserPresetSelected(userPreset)
+                        },
+                        onSettingsChanged: { settings in
+                            onEQChange(settings)
+                        },
+                        onSavePreset: onSavePreset,
+                        onDeleteUserPreset: onDeleteUserPreset,
+                        onRenameUserPreset: onRenameUserPreset
+                    )
+                case .dynamics:
+                    DynamicsPanelView(
+                        settings: $localDSP,
+                        onChange: { dspSource?.update($0) },
+                        gainReduction: { dspSource?.gainReduction() ?? 0 }
+                    )
+                case .spatial:
+                    SpatialPanelView(settings: $localDSP, onChange: { dspSource?.update($0) })
+                }
+            }
             .padding(.top, DesignTokens.Spacing.sm)
+            .onAppear { if let dspSource { localDSP = dspSource.settings() } }
         }
         .onChange(of: eqSettings) { _, newValue in
             // Sync from parent when external EQ settings change

@@ -20,6 +20,10 @@ protocol ProcessTapControlling: AnyObject, Sendable {
     func invalidate()
     func invalidateAsync() async
     func updateEQSettings(_ settings: EQSettings)
+    /// Applies the per-app spatial/compressor/limiter chain.
+    func updateChannelDSP(_ settings: ChannelDSPSettings)
+    /// Gain reduction (positive dB) applied by the dynamics stage recently, for metering.
+    var channelDSPGainReduction: Float { get }
     /// Starts/stops feeding the EQ analyzer. Stopped by default so the audio thread does no extra work.
     func setSpectrumCapture(_ enabled: Bool)
     /// Latest log-spaced dBFS spectrum, or nil when capture is off or unsupported.
@@ -70,7 +74,9 @@ extension ProcessTapControlling {
 
     func setSpectrumCapture(_ enabled: Bool) {}
 
+    func updateChannelDSP(_ settings: ChannelDSPSettings) {}
 
+    var channelDSPGainReduction: Float { 0 }
 
     func spectrumFrame() -> [Float]? { nil }
 }

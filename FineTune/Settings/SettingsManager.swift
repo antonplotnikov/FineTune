@@ -92,7 +92,7 @@ final class SettingsManager {
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "FineTune", category: "SettingsManager")
 
     struct Settings: Codable {
-        var version: Int = 13
+        var version: Int = 14
         var appVolumes: [String: Float] = [:]
         var appDeviceRouting: [String: String] = [:]  // bundleID → deviceUID
         var appMutes: [String: Bool] = [:]  // bundleID → isMuted
@@ -145,6 +145,9 @@ final class SettingsManager {
         var browserTabSettings: [String: BrowserTabSettings] = [:]
         var browserBridgeToken: String? = nil
 
+        // Per-app dynamics/spatial chain and game profiles
+        var appChannelDSP: [String: ChannelDSPSettings] = [:]  // bundleID → compressor/limiter/spatial
+
         init() {}
 
         init(from decoder: Decoder) throws {
@@ -194,6 +197,7 @@ final class SettingsManager {
             userEQPresets = try c.decodeIfPresent([UserEQPreset].self, forKey: .userEQPresets) ?? []
             browserTabSettings = try c.decodeIfPresent([String: BrowserTabSettings].self, forKey: .browserTabSettings) ?? [:]
             browserBridgeToken = try c.decodeIfPresent(String.self, forKey: .browserBridgeToken)
+            appChannelDSP = try c.decodeIfPresent([String: ChannelDSPSettings].self, forKey: .appChannelDSP) ?? [:]
         }
     }
 
@@ -273,6 +277,21 @@ final class SettingsManager {
 
     func setEQSettings(_ eqSettings: EQSettings, for appIdentifier: String) {
         settings.appEQSettings[appIdentifier] = eqSettings
+        scheduleSave()
+    }
+
+    // MARK: - Channel DSP & Game Profiles
+
+    func getChannelDSP(for appIdentifier: String) -> ChannelDSPSettings {
+        settings.appChannelDSP[appIdentifier] ?? .off
+    }
+
+    func setChannelDSP(_ dsp: ChannelDSPSettings, for appIdentifier: String) {
+        if dsp == .off {
+            settings.appChannelDSP.removeValue(forKey: appIdentifier)
+        } else {
+            settings.appChannelDSP[appIdentifier] = dsp
+        }
         scheduleSave()
     }
 
@@ -380,6 +399,7 @@ final class SettingsManager {
         settings.appMutes.removeValue(forKey: identifier)
         settings.appDeviceRouting.removeValue(forKey: identifier)
         settings.appEQSettings.removeValue(forKey: identifier)
+        settings.appChannelDSP.removeValue(forKey: identifier)
         settings.appDeviceSelectionMode.removeValue(forKey: identifier)
         settings.appSelectedDeviceUIDs.removeValue(forKey: identifier)
         scheduleSave()
@@ -674,6 +694,7 @@ final class SettingsManager {
             .union(settings.appBoosts.keys)
             .union(settings.appMutes.keys)
             .union(settings.appEQSettings.keys)
+            .union(settings.appChannelDSP.keys)
             .union(settings.appDeviceSelectionMode.keys)
             .union(settings.appSelectedDeviceUIDs.keys)
 
@@ -699,10 +720,11 @@ final class SettingsManager {
             let isDefaultBoost = boost == nil || boost == BoostLevel.x1.rawValue
             let isDefaultMute = mute == nil || mute == false
             let isDefaultEQ = eq == nil || eq == .flat
+            let isDefaultDSP = settings.appChannelDSP[identifier] == nil
             let isDefaultSelectionMode = selectionMode == nil
             let isDefaultSelectedUIDs = selectedUIDs == nil || selectedUIDs?.isEmpty == true
 
-            guard isDefaultVolume && isDefaultBoost && isDefaultMute && isDefaultEQ
+            guard isDefaultVolume && isDefaultBoost && isDefaultMute && isDefaultEQ && isDefaultDSP
                     && isDefaultSelectionMode && isDefaultSelectedUIDs else {
                 continue
             }
@@ -712,6 +734,7 @@ final class SettingsManager {
             settings.appBoosts.removeValue(forKey: identifier)
             settings.appMutes.removeValue(forKey: identifier)
             settings.appEQSettings.removeValue(forKey: identifier)
+            settings.appChannelDSP.removeValue(forKey: identifier)
             settings.appDeviceSelectionMode.removeValue(forKey: identifier)
             settings.appSelectedDeviceUIDs.removeValue(forKey: identifier)
             pruned += 1
@@ -866,6 +889,7 @@ final class SettingsManager {
         settings.appDeviceRouting.removeAll()
         settings.appMutes.removeAll()
         settings.appEQSettings.removeAll()
+        settings.appChannelDSP.removeAll()
         settings.pinnedApps.removeAll()
         settings.pinnedAppInfo.removeAll()
         settings.ignoredApps.removeAll()
