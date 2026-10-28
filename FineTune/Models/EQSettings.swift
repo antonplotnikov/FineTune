@@ -37,6 +37,9 @@ nonisolated struct EQSettings: Codable, Equatable {
     /// Output gain applied with the curve (either mode), used to keep boosted curves from clipping.
     var preampDB: Float
 
+    /// Parameters of the Radio Vibe wall effect that generated the current curve, if any.
+    var wallEffect: WallEffect?
+
     init(bandGains: [Float] = Array(repeating: 0, count: 10), isEnabled: Bool = true,
          mode: Mode = .graphic, parametricBands: [ParametricBand] = ParametricBand.defaultBands,
          preampDB: Float = 0) {
@@ -57,6 +60,7 @@ nonisolated struct EQSettings: Codable, Equatable {
         let bands = try container.decodeIfPresent([ParametricBand].self, forKey: .parametricBands)
         self.parametricBands = Array((bands ?? ParametricBand.defaultBands).prefix(Self.bandCount))
         self.preampDB = Self.clampPreamp(try container.decodeIfPresent(Float.self, forKey: .preampDB) ?? 0)
+        self.wallEffect = try container.decodeIfPresent(WallEffect.self, forKey: .wallEffect)
     }
 
     static func clampPreamp(_ value: Float) -> Float {
@@ -117,6 +121,16 @@ nonisolated struct EQSettings: Codable, Equatable {
             }
         }
         mode = newMode
+    }
+
+    /// True when the EQ changes nothing (or is switched off): flat gains/bands and no preamp.
+    var isFlat: Bool {
+        guard isEnabled else { return true }
+        guard preampDB == 0 else { return false }
+        switch mode {
+        case .graphic: return clampedGains.allSatisfy { $0 == 0 }
+        case .parametric: return parametricBands.allSatisfy(\.isNeutral)
+        }
     }
 
     /// Flat EQ preset

@@ -14,6 +14,7 @@ enum EQPreset: String, CaseIterable, Identifiable {
     case loudness
     case lateNight
     case smallSpeakers
+    case radioVibe
     // Music
     case rock
     case pop
@@ -60,7 +61,7 @@ enum EQPreset: String, CaseIterable, Identifiable {
             return .utility
         case .vocalClarity, .podcast, .spokenWord:
             return .speech
-        case .loudness, .lateNight, .smallSpeakers:
+        case .loudness, .lateNight, .smallSpeakers, .radioVibe:
             return .listening
         case .rock, .pop, .electronic, .jazz, .classical, .hipHop, .rnb, .deep, .acoustic:
             return .music
@@ -88,6 +89,7 @@ enum EQPreset: String, CaseIterable, Identifiable {
         case .loudness: return "Loudness"
         case .lateNight: return "Late Night"
         case .smallSpeakers: return "Small Speakers"
+        case .radioVibe: return "Radio Vibe"
         case .rock: return "Rock"
         case .pop: return "Pop"
         case .electronic: return "Electronic"
@@ -149,6 +151,10 @@ enum EQPreset: String, CaseIterable, Identifiable {
         case .smallSpeakers:
             // Laptop/MacBook speakers: boost reproducible bass, add clarity
             return EQSettings(bandGains: [3, 4, 5, 2, 0, 1, 2, 2, 1, 0])
+        case .radioVibe:
+            // Music through several concrete walls / floors: only a dull low rumble survives.
+            // Distance and Wall Thickness sliders regenerate this curve (see WallEffect).
+            return .wall(.default)
 
         // MARK: - Music
         case .rock:

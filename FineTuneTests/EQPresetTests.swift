@@ -13,7 +13,7 @@ struct EQPresetCatalogTests {
 
     @Test("allCases count is 30")
     func allCasesCount() {
-        #expect(EQPreset.allCases.count == 30)
+        #expect(EQPreset.allCases.count == 31)
     }
 
     @Test("Every preset has a non-empty name")
@@ -274,7 +274,7 @@ struct EQPresetGamesTests {
 
     @Test("Parametric game presets use parametric mode with a headroom preamp")
     func parametricGamePresets() {
-        for preset in [EQPreset.footstepsPro, .competitivePro, .cinematicPro, .voiceChatPro, .gunfireTamer] {
+        for preset in [EQPreset.footstepsPro, .competitivePro, .cinematicPro, .voiceChatPro, .gunfireTamer, .radioVibe] {
             let eq = preset.settings
             #expect(eq.mode == .parametric, "\(preset.rawValue)")
             #expect(!eq.parametricBands.isEmpty && eq.parametricBands.count <= EQSettings.bandCount)
@@ -287,6 +287,58 @@ struct EQPresetGamesTests {
     @Test("Built-in parametric presets compare equal across calls (stable ids)")
     func stablePresetIDs() {
         #expect(EQPreset.footstepsPro.settings == EQPreset.footstepsPro.settings)
+    }
+
+    @Test("isFlat: flat/disabled EQs are flat, presets are not")
+    func isFlat() {
+        #expect(EQSettings.flat.isFlat)
+        #expect(EQPreset.radioVibe.settings.isFlat == false)
+        #expect(EQPreset.bassBoost.settings.isFlat == false)
+        var off = EQPreset.radioVibe.settings
+        off.isEnabled = false
+        #expect(off.isFlat)
+        var parametric = EQSettings.flat
+        parametric.switchMode(to: .parametric)
+        #expect(parametric.isFlat)
+    }
+
+    @Test("Radio Vibe is a steep, deep low-pass with headroom")
+    func radioVibeWall() {
+        let eq = EQPreset.radioVibe.settings
+        #expect(eq.activeWallEffect == .default)
+        let coeffs = BiquadMath.coefficients(for: eq, sampleRate: 48_000)
+        func level(_ f: Double) -> Double {
+            BiquadMath.magnitudeResponseDB(coefficients: coeffs, frequency: f, sampleRate: 48_000)
+        }
+        #expect(level(80) > -30)                      // bass still passes (preamp included)
+        #expect(level(80) - level(1000) > 70)         // voice and mids are gone
+        #expect(level(80) - level(5000) > 100)
+        #expect(Double(eq.preampDB) + BiquadMath.peakBoostDB(for: eq) <= 0.1)
+    }
+
+    @Test("Distance and wall thickness only ever mute more")
+    func wallParametersAreMonotonic() {
+        let thin = WallEffect(distance: 0, wallThickness: 0)
+        let thick = WallEffect(distance: 1, wallThickness: 1)
+        #expect(thick.cutoffHz < thin.cutoffHz)
+        #expect(thick.cutoffHz >= 100 && thin.cutoffHz <= 300)
+        #expect(thick.preampDB < thin.preampDB && thick.preampDB >= EQSettings.minPreampDB)
+        #expect(thin.lowPassSections == 2 && thick.lowPassSections == 4)
+        for effect in [thin, thick] {
+            let eq = EQSettings.wall(effect)
+            #expect(eq.parametricBands.count <= EQSettings.bandCount)
+            #expect(Double(eq.preampDB) + BiquadMath.peakBoostDB(for: eq) <= 0.1)
+        }
+    }
+
+    @Test("Wall parameters survive encoding; manual edits hide them")
+    func wallCodable() throws {
+        let eq = EQSettings.wall(WallEffect(distance: 0.3, wallThickness: 0.9))
+        let decoded = try JSONDecoder().decode(EQSettings.self, from: JSONEncoder().encode(eq))
+        #expect(decoded.activeWallEffect == eq.wallEffect)
+        var edited = decoded
+        edited.parametricBands[1].gainDB += 3
+        #expect(edited.activeWallEffect == nil)
     }
 
     @Test("Gain step is 0.1 dB")

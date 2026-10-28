@@ -12,8 +12,15 @@ $("save").addEventListener("click", async () => {
 
 // Opening this popup counts as an activeTab invocation for the current tab,
 // which is what tabCapture requires.
-$("grant").addEventListener("click", async () => {
+async function grant() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const res = await chrome.runtime.sendMessage({ target: "background", type: "retry-capture", tabId: tab.id });
-  $("status").textContent = res?.ok ? "Tab is now controlled by FineTune." : "Change this tab's volume in FineTune first, then try again.";
-});
+  $("status").textContent = res?.ok
+    ? "Tab is now controlled by FineTune."
+    : res?.noSettings
+      ? "Change this tab's volume or EQ in FineTune first, then reopen this popup."
+      : `Capture failed: ${res?.error || "unknown error"}`;
+}
+$("grant").addEventListener("click", grant);
+// Opening the popup already grants activeTab, so capture right away instead of waiting for a second click.
+grant();

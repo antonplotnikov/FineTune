@@ -12,6 +12,15 @@ let reconnectTimer = null;
 const desired = new Map();
 /** tabIds currently routed through the offscreen graph */
 const captured = new Set();
+/** tabId → why the last capture attempt failed, shown in the popup */
+const captureErrors = new Map();
+/** tabId → in-flight capture attempt, so a burst of slider updates starts only one */
+const capturing = new Map();
+
+/** Fire-and-forget message to the offscreen document; it may not exist yet. */
+function toOffscreen(msg) {
+  return chrome.runtime.sendMessage({ target: "offscreen", ...msg }).catch(() => undefined);
+}
 
 function isDefault(s) {
   const flatBands = !s.bands || s.bands.every(
@@ -96,19 +105,37 @@ async function applySettings(tabId, msg) {
     const ok = await capture(tabId);
     if (!ok) return;
   }
-  chrome.runtime.sendMessage({ target: "offscreen", type: "apply", tabId, ...settings });
+  // Use the latest request: more updates may have arrived while the capture was starting.
+  const latest = desired.get(tabId);
+  if (latest && !isDefault(latest)) toOffscreen({ type: "apply", tabId, ...latest });
 }
 
-async function capture(tabId) {
+function capture(tabId) {
+  if (!capturing.has(tabId)) {
+    capturing.set(tabId, doCapture(tabId).finally(() => capturing.delete(tabId)));
+  }
+  return capturing.get(tabId);
+}
+
+async function doCapture(tabId) {
   try {
     await ensureOffscreen();
+    // The worker may have restarted while the offscreen graph kept running.
+    const existing = await toOffscreen({ type: "has", tabId });
+    if (existing?.has) {
+      captured.add(tabId);
+      return true;
+    }
     // Requires the extension to have been invoked on this tab (activeTab) at least once.
     const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
-    await chrome.runtime.sendMessage({ target: "offscreen", type: "start", tabId, streamId });
+    const res = await chrome.runtime.sendMessage({ target: "offscreen", type: "start", tabId, streamId });
+    if (!res?.ok) throw new Error(res?.error || "offscreen start failed");
     captured.add(tabId);
-    chrome.action.setBadgeText({ tabId, text: "" });
+    captureErrors.delete(tabId);
+    chrome.action.setBadgeText({ tabId, text: "" }).catch(() => {});
     return true;
   } catch (err) {
+    captureErrors.set(tabId, String(err?.message || err));
     // No capture permission yet: ask the user to click the toolbar icon on that tab.
     chrome.action.setBadgeText({ tabId, text: "!" }).catch(() => {});
     chrome.action.setBadgeBackgroundColor({ tabId, color: "#d93025" }).catch(() => {});
@@ -118,22 +145,20 @@ async function capture(tabId) {
 
 async function release(tabId) {
   if (!captured.delete(tabId)) return;
-  chrome.runtime.sendMessage({ target: "offscreen", type: "stop", tabId });
+  toOffscreen({ type: "stop", tabId });
 }
 
 // --- Events ----------------------------------------------------------------
 
 chrome.tabs.onUpdated.addListener((tabId, change) => {
   if (change.audible !== undefined || change.title || change.url || change.status === "complete") {
-    // A navigation tears down the capture stream; forget it so it is re-established lazily.
-    if (change.url) captured.delete(tabId);
     reportTabs();
   }
 });
 chrome.tabs.onRemoved.addListener((tabId) => {
   captured.delete(tabId);
   desired.delete(tabId);
-  chrome.runtime.sendMessage({ target: "offscreen", type: "stop", tabId }).catch(() => {});
+  toOffscreen({ type: "stop", tabId });
   reportTabs();
 });
 chrome.tabs.onCreated.addListener(reportTabs);
@@ -145,10 +170,16 @@ chrome.storage.onChanged.addListener(() => {
 
 // Popup asks to (re)capture the active tab after the user clicked the toolbar icon.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg.target === "background" && msg.type === "stream-ended") {
+    captured.delete(msg.tabId);
+    const settings = desired.get(msg.tabId);
+    if (settings && !isDefault(settings)) applySettings(msg.tabId, { ...settings });
+    return;
+  }
   if (msg.target === "background" && msg.type === "retry-capture") {
     const settings = desired.get(msg.tabId);
-    if (settings) applySettings(msg.tabId, { ...settings }).then(() => sendResponse({ ok: captured.has(msg.tabId) }));
-    else sendResponse({ ok: false });
+    if (settings) applySettings(msg.tabId, { ...settings }).then(() => sendResponse({ ok: captured.has(msg.tabId), error: captureErrors.get(msg.tabId) }));
+    else sendResponse({ ok: false, noSettings: true });
     return true;
   }
 });

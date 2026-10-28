@@ -31,7 +31,8 @@ struct EQPanelView: View {
 
     /// Finds the matching built-in preset for the current band gains, if any.
     private var currentBuiltInPreset: EQPreset? {
-        EQPreset.allCases.first { $0.settings.hasSameCurve(as: settings) }
+        if settings.activeWallEffect != nil { return .radioVibe }
+        return EQPreset.allCases.first { $0.settings.hasSameCurve(as: settings) }
     }
 
     /// Finds the matching user preset for the current band gains, if any.
@@ -161,6 +162,12 @@ struct EQPanelView: View {
             preampRow
                 .opacity(settings.isEnabled ? 1.0 : 0.3)
                 .allowsHitTesting(settings.isEnabled)
+
+            if let wall = settings.activeWallEffect {
+                wallRows(wall)
+                    .opacity(settings.isEnabled ? 1.0 : 0.3)
+                    .allowsHitTesting(settings.isEnabled)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -297,6 +304,37 @@ struct EQPanelView: View {
             }
             Spacer(minLength: 0)
         }
+    }
+
+    /// Distance / Wall Thickness controls of the Radio Vibe preset.
+    private func wallRows(_ wall: WallEffect) -> some View {
+        VStack(spacing: DesignTokens.Spacing.xs) {
+            wallSlider("Distance", value: wall.distance) { setWall(WallEffect(distance: $0, wallThickness: wall.wallThickness)) }
+            wallSlider("Wall Thickness", value: wall.wallThickness) { setWall(WallEffect(distance: wall.distance, wallThickness: $0)) }
+        }
+    }
+
+    private func wallSlider(_ title: String, value: Double, onChange: @escaping (Double) -> Void) -> some View {
+        HStack(spacing: DesignTokens.Spacing.sm) {
+            Text(title)
+                .font(DesignTokens.Typography.pickerText)
+                .foregroundStyle(DesignTokens.Colors.textSecondary)
+                .frame(width: 96, alignment: .leading)
+            LiquidGlassSlider(value: Binding(get: { value }, set: onChange), showUnityMarker: false)
+                .frame(maxWidth: 220)
+            Text("\(Int((value * 100).rounded()))%")
+                .font(DesignTokens.Typography.caption)
+                .foregroundStyle(DesignTokens.Colors.textTertiary)
+                .frame(width: 36, alignment: .trailing)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func setWall(_ effect: WallEffect) {
+        var next = EQSettings.wall(effect)
+        next.isEnabled = settings.isEnabled
+        settings = next
+        onSettingsChanged(next)
     }
 
     // MARK: - Save Button

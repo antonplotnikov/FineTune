@@ -31,6 +31,12 @@ async function start(tabId, streamId) {
   node.connect(gain);
   gain.connect(ctx.destination);
   graphs.set(tabId, { stream, source, filters, gain });
+  // The tab closed or the stream was revoked: let the worker re-capture if still wanted.
+  stream.getAudioTracks().forEach((t) => t.addEventListener("ended", () => {
+    if (graphs.get(tabId)?.stream !== stream) return;
+    stop(tabId);
+    chrome.runtime.sendMessage({ target: "background", type: "stream-ended", tabId }).catch(() => {});
+  }));
   if (ctx.state === "suspended") await ctx.resume();
 }
 
@@ -71,6 +77,7 @@ function stop(tabId) {
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.target !== "offscreen") return;
   if (msg.type === "start") start(msg.tabId, msg.streamId).then(() => sendResponse({ ok: true }), (e) => sendResponse({ ok: false, error: String(e) }));
+  else if (msg.type === "has") sendResponse({ has: graphs.has(msg.tabId) });
   else if (msg.type === "apply") apply(msg.tabId, msg);
   else if (msg.type === "stop") stop(msg.tabId);
   return msg.type === "start";

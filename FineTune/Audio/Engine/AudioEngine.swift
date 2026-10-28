@@ -268,6 +268,8 @@ final class AudioEngine {
         // Wire callbacks — needed for both test and production mode
         wireCallbacks()
 
+        browserTabs.onTabEQActivityChanged = { [weak self] in self?.refreshBrowserAppEQ() }
+
         if startMonitorsAutomatically {
             browserTabs.start()
             Task { @MainActor in
@@ -633,7 +635,7 @@ final class AudioEngine {
     /// Applies a profile to one running app right now (also pushes to its live tap).
     func applyGameProfile(_ profile: GameProfile, to app: AudioApp) {
         persistGameProfile(profile, identifier: app.persistenceIdentifier)
-        if let eq = profile.eq { taps[app.id]?.updateEQSettings(eq) }
+        if profile.eq != nil { taps[app.id]?.updateEQSettings(tapEQ(for: app)) }
         if let dsp = profile.dsp { taps[app.id]?.updateChannelDSP(dsp) }
     }
 
@@ -853,8 +855,25 @@ final class AudioEngine {
     /// Update EQ settings for an app
     func setEQSettings(_ settings: EQSettings, for app: AudioApp) {
         guard let tap = taps[app.id] else { return }
-        tap.updateEQSettings(settings)
         settingsManager.setEQSettings(settings, for: app.persistenceIdentifier)
+        if BrowserTabController.isChromiumBrowser(bundleID: app.bundleID) { browserTabs.setBaseEQ(settings) }
+        tap.updateEQSettings(tapEQ(for: app))
+    }
+
+    /// EQ the process tap should apply. A browser with a per-tab EQ active is left flat at the tap:
+    /// the tap can't tell tabs apart, so the app EQ would stack on top of the tab's preset. The
+    /// extension applies the app EQ to the other tabs instead.
+    private func tapEQ(for app: AudioApp) -> EQSettings {
+        if browserTabs.hasTabEQ, BrowserTabController.isChromiumBrowser(bundleID: app.bundleID) { return .flat }
+        return settingsManager.getEQSettings(for: app.persistenceIdentifier)
+    }
+
+    /// Re-applies the app-level EQ of running Chromium browsers after per-tab EQ activity changed.
+    private func refreshBrowserAppEQ() {
+        for tap in taps.values where BrowserTabController.isChromiumBrowser(bundleID: tap.app.bundleID) {
+            browserTabs.setBaseEQ(settingsManager.getEQSettings(for: tap.app.persistenceIdentifier))
+            tap.updateEQSettings(tapEQ(for: tap.app))
+        }
     }
 
     /// Get EQ settings for an app
@@ -933,7 +952,7 @@ final class AudioEngine {
         var loudnessEqSettings = LoudnessEqualizerSettings()
         loudnessEqSettings.enabled = settingsManager.appSettings.loudnessEqualizationEnabled
         return TapInitialState(
-            eqSettings: settingsManager.getEQSettings(for: app.persistenceIdentifier),
+            eqSettings: tapEQ(for: app),
             channelDSPSettings: settingsManager.getChannelDSP(for: app.persistenceIdentifier),
             autoEQProfile: autoEQProfileForActivation(deviceUID: primaryDeviceUID),
             autoEQPreampEnabled: settingsManager.autoEQPreampEnabled,

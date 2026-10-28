@@ -7,6 +7,15 @@ final class BrowserTabController {
     private(set) var tabs: [BrowserTab] = []
     private(set) var isExtensionConnected = false
 
+    /// The browser app's own EQ. While any tab has its own EQ, the app-level tap EQ is bypassed
+    /// (it would sit on top of the tab's preset), so this curve is applied inside the extension
+    /// to the tabs that have no EQ of their own.
+    private(set) var baseEQ: EQSettings = .flat
+    /// True while at least one tab has an EQ of its own.
+    private(set) var hasTabEQ = false
+    /// Called when `hasTabEQ` changes, so the engine can bypass/restore the app-level EQ.
+    var onTabEQActivityChanged: (() -> Void)?
+
     private let settingsManager: SettingsManager
     private var server: BrowserBridgeServer?
 
@@ -22,7 +31,13 @@ final class BrowserTabController {
             settingsLookup: { manager.getBrowserTabSettings(for: $0) }
         )
         server.onTabsChanged = { [weak self] tabs in self?.applyReported(tabs) }
-        server.onConnectionChanged = { [weak self] connected in self?.isExtensionConnected = connected }
+        server.onConnectionChanged = { [weak self] connected in
+            guard let self else { return }
+            isExtensionConnected = connected
+            // A fresh connection (e.g. the extension's service worker restarted) has lost its
+            // state, so treat every tab as new and push saved settings again.
+            if connected { tabs = []; refreshTabEQActivity() }
+        }
         server.start()
         self.server = server
     }
@@ -32,6 +47,7 @@ final class BrowserTabController {
         server = nil
         tabs = []
         isExtensionConnected = false
+        refreshTabEQActivity()
     }
 
     var bridgeToken: String { settingsManager.browserBridgeToken() }
@@ -54,6 +70,13 @@ final class BrowserTabController {
         update(tabId) { $0.eq = eq }
     }
 
+    /// Updates the browser app's EQ that tabs without their own EQ fall back to.
+    func setBaseEQ(_ eq: EQSettings) {
+        guard eq != baseEQ else { return }
+        baseEQ = eq
+        if hasTabEQ { pushAll() }
+    }
+
     // MARK: - Private
 
     private func update(_ tabId: Int, _ change: (inout BrowserTabSettings) -> Void) {
@@ -63,16 +86,55 @@ final class BrowserTabController {
         if let key = tab.persistenceKey {
             settingsManager.setBrowserTabSettings(tab.settings, for: key)
         }
-        server?.send(tabId: tab.id, settings: tab.settings)
+        if refreshTabEQActivity() {
+            pushAll()
+        } else {
+            push(tab)
+        }
     }
 
-    /// Replaces the tab list from an extension report and pushes saved settings to tabs
-    /// that have non-default state (e.g. after a browser restart).
+    /// Settings as the extension should render them: a tab without its own EQ plays through the
+    /// browser app's EQ while any other tab has a preset (the tap-level EQ is bypassed then).
+    private func effectiveSettings(for tab: BrowserTab) -> BrowserTabSettings {
+        var settings = tab.settings
+        if hasTabEQ && settings.eq.isFlat { settings.eq = baseEQ }
+        return settings
+    }
+
+    private func push(_ tab: BrowserTab) {
+        server?.send(tabId: tab.id, settings: effectiveSettings(for: tab))
+    }
+
+    private func pushAll() {
+        for tab in tabs where tab.isAudible || !tab.settings.isDefault { push(tab) }
+    }
+
+    /// Recomputes `hasTabEQ`; returns true (after notifying the engine) when it changed.
+    @discardableResult
+    private func refreshTabEQActivity() -> Bool {
+        let active = tabs.contains { !$0.settings.eq.isFlat }
+        guard active != hasTabEQ else { return false }
+        hasTabEQ = active
+        onTabEQActivityChanged?()
+        return true
+    }
+
+    /// Replaces the tab list from an extension report and pushes saved settings to tabs the
+    /// extension has not seen yet (e.g. after a browser restart) or whose settings changed
+    /// because the tab navigated to another host.
     private func applyReported(_ reported: [BrowserTab]) {
-        let known = Set(tabs.map(\.id))
+        let previous = Dictionary(tabs.map { ($0.id, $0.settings) }, uniquingKeysWith: { _, last in last })
         tabs = reported
-        for tab in reported where !known.contains(tab.id) && !tab.settings.isDefault {
-            server?.send(tabId: tab.id, settings: tab.settings)
+        if refreshTabEQActivity() {
+            pushAll()
+            return
+        }
+        for tab in reported {
+            if let old = previous[tab.id] {
+                if old != tab.settings { push(tab) }
+            } else if !tab.settings.isDefault || (hasTabEQ && tab.isAudible) {
+                push(tab)
+            }
         }
     }
 }
